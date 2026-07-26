@@ -5,6 +5,7 @@
  */
 
 import { ingest, sniffFormat, type IngestResult } from '../lib/image.ts'
+import { computeLocalMetrics, deriveExif } from '../lib/metrics/index.ts'
 
 export interface SelfTestRow {
   label: string
@@ -141,6 +142,89 @@ export async function runSelfTest(): Promise<SelfTestRow[]> {
     label: 'EXIF（canvas 生成的图没有）',
     value: result.exif === null ? 'null（正确降级）' : JSON.stringify(result.exif),
     ok: result.exif === null,
+  })
+
+  // ---- Step 2：本地指标跑在真实尺寸的图上
+  const t0 = performance.now()
+  const m = computeLocalMetrics({
+    global: result.global.imageData,
+    native: result.native.imageData,
+    originalWidth: result.width,
+    originalHeight: result.height,
+    globalDownscaled: result.globalDownscaled,
+    exif: result.exif,
+  })
+  const elapsed = performance.now() - t0
+
+  rows.push({
+    label: '全部指标耗时（6MP）',
+    value: `${elapsed.toFixed(0)} ms`,
+    ok: elapsed < 8000,
+    note: '超过几秒就得考虑挪进 worker',
+  })
+
+  rows.push({
+    label: '尺寸与宽高比',
+    value: `${m.dimensions.width}×${m.dimensions.height}，${m.dimensions.aspectRatio}，${m.dimensions.megapixels.toFixed(1)}MP`,
+    ok: m.dimensions.aspectRatio === '3:2',
+  })
+
+  rows.push({
+    label: '高光裁切（右半接近纯白）',
+    value: `${(m.exposure.highlightClipPct * 100).toFixed(1)}%，均值亮度 ${m.exposure.meanLuma.toFixed(0)}`,
+    ok: m.exposure.highlightClipPct > 0.3,
+    note: '右半占画面一半，应该测到约 50%',
+  })
+
+  rows.push({
+    label: '白平衡方向',
+    value: `${m.whiteBalance.direction}，幅度 ${m.whiteBalance.magnitude.toFixed(2)}，R/B ${m.whiteBalance.rbRatio.toFixed(2)}`,
+    ok: m.whiteBalance.direction === 'warm',
+    note: '合成图左半 R>B，应判 warm',
+  })
+
+  rows.push({
+    label: '肤色粗筛的已知误检',
+    value: `覆盖 ${(m.skin.coveragePct * 100).toFixed(1)}%，判定 ${m.skin.verdict}`,
+    ok: m.skin.coveragePct > 0.4 && m.skin.verdict !== 'insufficient-sample',
+    note: '左半暖褐 rgb(121,105,80) 的 Cb=112.8 Cr=138.0 落在肤色框内，被当成肤色——这正是 YCbCr 粗筛的已知代价（木头、沙土、暖色布料都会中招），真正的把关交给视觉模型',
+  })
+
+  rows.push({
+    label: '锐度（有硬边方块）',
+    value: `方差 ${m.sharpness.laplacianVariance.toFixed(0)}，判定 ${m.sharpness.verdict}，原始分辨率=${m.sharpness.measuredAtNativeScale}`,
+    ok: m.sharpness.measuredAtNativeScale,
+  })
+
+  rows.push({
+    label: '噪点（JPEG 压缩会引入少量）',
+    value: m.noise.estimate.toFixed(2),
+    ok: m.noise.estimate < 8,
+  })
+
+  rows.push({
+    label: '主色板',
+    value: m.palette.map((p) => `${p.hex} ${(p.pct * 100).toFixed(0)}%`).join('  '),
+    ok: m.palette.length > 0 && m.palette.reduce((a, p) => a + p.pct, 0) > 0.95,
+  })
+
+  rows.push({
+    label: '亮度重心（右半更亮）',
+    value: `x=${m.composition.brightnessCentroid.x.toFixed(3)} y=${m.composition.brightnessCentroid.y.toFixed(3)}`,
+    ok: m.composition.brightnessCentroid.x > 0.55,
+  })
+
+  rows.push({
+    label: '地平线倾斜（画面里没有水平线）',
+    value: m.composition.horizonTiltDeg === null ? 'null（正确拒答）' : `${m.composition.horizonTiltDeg}°`,
+    ok: true,
+    note: '有值也可以——方块边缘本身就是水平的',
+  })
+
+  rows.push({
+    label: 'EXIF 派生摘要',
+    value: deriveExif(m.exif).summary,
+    ok: deriveExif(m.exif).summary.includes('无拍摄参数'),
   })
 
   return rows

@@ -3,7 +3,7 @@ import { runSelfTest, type SelfTestRow } from './dev/selfTest.ts'
 
 const STEPS = [
   { id: 1, label: '图片管线', done: true },
-  { id: 2, label: '本地指标', done: false },
+  { id: 2, label: '本地指标', done: true },
   { id: 3, label: 'CLI 通道', done: false },
   { id: 4, label: '诊断框架', done: false },
   { id: 5, label: '界面', done: false },
@@ -61,9 +61,9 @@ export default function App() {
           <section className="rounded-lg border border-[var(--color-edge)] bg-[var(--color-panel)] p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-medium">图片管线自检</h2>
+                <h2 className="text-sm font-medium">管线与指标自检</h2>
                 <p className="mt-1 text-xs text-[var(--color-dim)]">
-                  合成一张 3000×2000 的特征已知测试图，跑完整条 ingest 管线
+                  合成一张 3000×2000 的特征已知测试图，跑完 ingest 管线与全部本地指标
                 </p>
               </div>
               <button

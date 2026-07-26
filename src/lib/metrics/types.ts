@@ -1,5 +1,15 @@
 /** 本地图像指标的数据结构。见设计文档第 5 节。 */
 
+/**
+ * 像素输入。`ImageData` 结构上兼容这个接口，所以单测可以在 node 里
+ * 直接构造字面量，不需要 DOM。
+ */
+export interface PixelSource {
+  data: Uint8ClampedArray
+  width: number
+  height: number
+}
+
 export interface ExifData {
   make: string | null
   model: string | null
