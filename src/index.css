@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b0d10;
+  --color-panel: #14181d;
+  --color-edge: #232a32;
+  --color-dim: #8b96a3;
+
+  /* 可解决性三档的色标，全应用统一 */
+  --color-fix-post: #4ade80;   /* 后期可修 */
+  --color-fix-ai: #fbbf24;     /* 需 AI 生成 */
+  --color-fix-reshoot: #f87171; /* 拍摄决定·修不回来 */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink);
+  color: #e6ebf1;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+    "Segoe UI", sans-serif;
+}
