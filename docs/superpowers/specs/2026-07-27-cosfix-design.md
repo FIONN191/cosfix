@@ -15,8 +15,8 @@
 
 明确不做，避免范围蔓延：
 
-- **不实际生成修好的图**。只出提示词，用户自己拿去别处跑。
 - **不出 Lightroom/PS 参数**。用户明确只要 AI 修图提示词。
+- **主线不生成修好的图**。默认只出提示词。生图/改图是可选外接通道（见 9.3），因为目前没有干净的免费路径——接不接、接哪个由用户决定。
 - **不出重拍教程**。诊断会把「拍摄决定·修不回来」标出来，但不展开讲下次怎么拍。
 - **不做批量队列**。v1 单图。
 - **不引入人脸检测库**。肤色用 YCbCr 粗筛，其余交给视觉模型。
@@ -45,8 +45,11 @@ apps/cosfix/
 │   │   ├── diagnose/         framework.ts  schema.ts  run.ts
 │   │   ├── compare/          delta.ts  run.ts
 │   │   ├── prompts/          gemini.ts  jimeng.ts  fluxKontext.ts  chatgpt.ts  run.ts
-│   │   ├── providers/        anthropic.ts  openai.ts  gemini.ts  doubao.ts
-│   │   │                     zhipu.ts  qwen.ts  openrouter.ts  index.ts
+│   │   ├── channels/         统一的执行通道抽象
+│   │   │   ├── cli/          codex.ts  qwen.ts  geminiCli.ts  detect.ts
+│   │   │   ├── http/         anthropic.ts  openai.ts  gemini.ts  doubao.ts
+│   │   │   │                 zhipu.ts  qwen.ts  openrouter.ts
+│   │   │   └── index.ts      注册表 + 可用性探测
 │   │   ├── transport.ts      环境判断 + 统一调用入口
 │   │   ├── image.ts          解码 / 缩放 / HEIC 转码
 │   │   └── storage.ts        历史档案读写
@@ -271,9 +274,29 @@ interface PromptCard {
 
 ---
 
-## 9. Provider 适配层
+## 9. 执行通道：CLI 与 HTTP API 两条路
 
-支持 Claude、OpenAI、Gemini、豆包、智谱、通义、OpenRouter。每家一个适配器，接口统一：
+诊断需要一个能读图的多模态模型。有两条路拿到它，**默认走 CLI**。
+
+### 9.1 CLI 通道（默认，无需 API key）
+
+各家官方发布的 agentic CLI 用**账号 OAuth 登录**，消耗的是订阅额度而非按 token 计费的 API 额度。桌面版直接 `spawn` 子进程即可，不花钱。
+
+| CLI | 调用方式 | 额度来源 | 本机状态 |
+|---|---|---|---|
+| Codex | `codex exec -i <图> "<提示词>"` | ChatGPT 订阅 | ✅ 已装 `/Applications/ChatGPT.app/Contents/Resources/codex` |
+| Qwen Code | `qwen -p "<提示词>" -o json` | 通义免费额度 | ✅ 已装 `~/.npm-global/bin/qwen` |
+| Gemini CLI | `gemini -p "<提示词>" --output-format json` | Google OAuth，60 次/分、1000 次/天 | 未装，可选 |
+
+Codex 的 `-i` 直接附加图片文件；Qwen 与 Gemini CLI 都支持 `--output-format json`，正好对上诊断需要的结构化输出。
+
+**限制要写清楚**：这些是编码 agent，**能读图但不能生图**。它们只覆盖诊断和提示词生成，覆盖不到出图。
+
+**约束**：CLI 通道只在桌面版可用（需要 `spawn` 子进程）。网页版只能走 HTTP API 通道。
+
+### 9.2 HTTP API 通道（可选，需 key）
+
+给没装 CLI 的人和网页版用。支持 Claude、OpenAI、Gemini、豆包、智谱、通义、OpenRouter。每家一个适配器，接口统一：
 
 ```ts
 interface VisionRequest {
@@ -298,7 +321,39 @@ interface VisionProvider {
 
 **Key 存储**：桌面版用 Electron `safeStorage` 加密存盘；网页版存 `localStorage` 并在设置页明确提示风险。网页版也支持由服务端环境变量提供 key（部署者自付费模式）。
 
-**成本显示**：每次调用后显示 token 用量和估算费用。
+**成本显示**：每次调用后显示 token 用量和估算费用。CLI 通道不计费，显示「走订阅额度」。
+
+### 9.3 统一抽象
+
+两条通道对上层是同一个接口，`diagnose/run.ts` 不需要知道自己跑在 CLI 还是 HTTP 上：
+
+```ts
+type ChannelKind = 'cli' | 'http';
+
+interface Channel {
+  id: string;
+  kind: ChannelKind;
+  label: string;
+  available(): Promise<boolean>;      // CLI 探测可执行文件，HTTP 检查 key
+  call(req: VisionRequest): Promise<VisionResult>;
+}
+```
+
+CLI 实现在 Electron 主进程 `spawn` 子进程，把 1536px 副本写到临时文件、路径传给 CLI、读 stdout、解析 JSON、清理临时文件。渲染层通过 `transport.ts` 拿到同样的 `VisionResult`。
+
+启动时探测一遍本机有哪些 CLI 可用，设置页把可用的排在前面，不可用的灰掉并说明原因。
+
+### 9.4 生图外接通道（可选，默认关闭）
+
+CosFix 主线只出提示词。想让它直接出图的话，这里留一个可选钩子——但**目前没有干净的免费路径**，三个选项各有代价，默认全部关闭，由用户自己开：
+
+| 选项 | 成本 | 风险 |
+|---|---|---|
+| Gemini API（nanobanana 扩展或直连） | 生图**零免费额度**，从第一张就计费 | 无，官方渠道 |
+| 复用 Antigravity OAuth 凭据的第三方 skill | 免费 | **拿官方凭据打非官方通道，有封号风险，不推荐** |
+| 即梦 CLI | 会员积分 | 工具来源未查证，若为逆向私有接口则有封号风险 |
+
+实现上就是 `Channel` 接口再加一个 `generate(prompt, inputImage?)` 方法，第一版可以只做 Gemini API 直连这一条官方路径。**不在 CosFix 里内置任何绕过官方计费的方案。**
 
 ---
 
@@ -313,6 +368,8 @@ interface VisionProvider {
                → PromptCard[]
 ```
 
+两次调用都经 `Channel` 抽象，CLI 与 HTTP 通道走同一条流水线。走 CLI 时 1536px 副本落成临时文件传路径，走 HTTP 时转 base64 进请求体——差异收在 Channel 实现里，流水线本身不分叉。
+
 **call #2 不带图**，因此便宜得多，而且切换目标工具时可以单独重跑，不必重新诊断。
 
 有参考图时，DNA 解析和差距归因合并进 call #1 完成——两张图已经在上下文里，拆成两次调用是浪费。
@@ -323,6 +380,11 @@ interface VisionProvider {
 
 | 情况 | 处理 |
 |---|---|
+| 没有任何可用通道 | 引导到设置页，列出探测结果：装了哪些 CLI、缺哪些 key |
+| CLI 未登录 / 登录过期 | 原样透出 CLI 的提示，附上该 CLI 的登录命令 |
+| CLI 子进程超时或非零退出 | 展示 stderr 前若干行，不吞错；标注是哪个 CLI |
+| CLI 订阅额度耗尽 | 提示切换到另一条通道，列出当前可用的 |
+| 网页版选了 CLI 通道 | 界面上直接灰掉并说明「CLI 通道仅桌面版可用」 |
 | 未配置 API key | 引导到设置页，不报错弹窗 |
 | 网络超时 | 自动重试一次，仍失败则展示具体错误和 provider 名 |
 | 模型返回非法 JSON | 把解析错误回喂给模型重试一次；仍失败则展示原始文本，不静默丢弃 |
@@ -353,11 +415,12 @@ interface VisionProvider {
 
 | 阶段 | 内容 |
 |---|---|
-| M1 | 输入界面 + 本地指标 + 单图诊断 + 一家 provider + Electron 壳，跑通主链路 |
+| M1 | 输入界面 + 本地指标 + 单图诊断 + **CLI 通道（codex）** + Electron 壳，跑通主链路，零成本 |
 | M2 | 提示词生成四家 tab + 强度三档 + 保护清单自动注入 |
 | M3 | 参考图对比（DNA 解析 + delta + 归因 + 路线图） |
-| M4 | 历史档案 + 导出 + 多 provider 设置 + 成本显示 |
-| M5 | 网页壳 + Vercel Function + 部署 |
+| M4 | 历史档案 + 导出 + 通道设置页（CLI 探测 + HTTP key 配置）+ 成本显示 |
+| M5 | 网页壳 + Vercel Function + 部署（网页版只有 HTTP 通道） |
+| M6 | 可选：生图外接通道（仅官方计费路径） |
 
 M1 结束时应该已经能用；后续每个阶段都是独立可交付的增量。
 

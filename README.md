@@ -16,24 +16,37 @@ cos 场照修图方向建议器。上传一张场照（未修原片或已修成�
 
 **提示词产出**：针对 Gemini / Nano Banana、即梦 / Seedream / 可灵、Flux Kontext、ChatGPT 四家分别适配写法，每个问题给轻／中／重三档强度，自动附带「保护清单」（发色发型、瞳色、服装纹样、特定道具），防止 AI 顺手改掉角色特征。
 
+## 不需要 API key
+
+诊断默认走 **CLI 通道**：各家官方 agentic CLI 用账号 OAuth 登录，消耗订阅额度而非按 token 计费的 API 额度，桌面版直接 `spawn` 子进程调用。
+
+| CLI | 调用 | 额度 |
+|---|---|---|
+| Codex | `codex exec -i <图> "<提示词>"` | ChatGPT 订阅 |
+| Qwen Code | `qwen -p "<提示词>" -o json` | 通义免费额度 |
+| Gemini CLI | `gemini -p "<提示词>" --output-format json` | Google OAuth，1000 次/天 |
+
+这些是编码 agent，**能读图不能生图**——刚好够诊断和提示词生成，这也正是 CosFix 需要的。
+
+没装 CLI 或用网页版时，回落到 HTTP API 通道（Claude / OpenAI / Gemini / 豆包 / 智谱 / 通义 / OpenRouter，key 自备）。两条通道对上层是同一个 `Channel` 接口。
+
 ## 形态
 
 单个 Vite + React 工程，同一份产物跑两个壳：
 
-- **桌面版**：Electron，Mac DMG / Win EXE，AI 调用走主进程无 CORS 限制，key 加密存本地
-- **网页版**：Vercel + Serverless Function 转发
-
-支持 Claude、OpenAI、Gemini、豆包、智谱、通义、OpenRouter，key 自备。
+- **桌面版**：Electron，Mac DMG / Win EXE，CLI 通道与 HTTP 通道都可用
+- **网页版**：Vercel + Serverless Function 转发，只有 HTTP 通道
 
 ## 分期
 
 | 阶段 | 内容 |
 |---|---|
-| M1 | 输入界面 + 本地指标 + 单图诊断 + 一家 provider + Electron 壳 |
+| M1 | 输入界面 + 本地指标 + 单图诊断 + CLI 通道 + Electron 壳 |
 | M2 | 提示词生成四家 tab + 强度三档 + 保护清单 |
 | M3 | 参考图对比 |
-| M4 | 历史档案 + 导出 + 多 provider 设置 + 成本显示 |
+| M4 | 历史档案 + 导出 + 通道设置页 + 成本显示 |
 | M5 | 网页壳 + Vercel 部署 |
+| M6 | 可选：生图外接通道（仅官方计费路径） |
 
 ## 说明
 
