@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-electron/
+release/
+build/
+
+.env
+.env.local
+*.local
+
+.DS_Store
+.vercel/
+
+# 真实场照测试图放这里，不进公开仓库
+test/fixtures/private/
