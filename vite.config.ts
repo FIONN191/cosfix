@@ -11,6 +11,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // 集成测试的文件名是 *.integration.ts，刻意不匹配这个 glob——
+    // 它会真起子进程打 codex，耗时约 25s 且消耗订阅额度，不能进默认测试。
+    // 单独跑：npm run test:integration
     include: ['src/**/*.test.ts'],
   },
 })

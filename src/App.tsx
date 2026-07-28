@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { runSelfTest, type SelfTestRow } from './dev/selfTest.ts'
+import { isDesktop } from './lib/transport.ts'
 
 const STEPS = [
   { id: 1, label: '图片管线', done: true },
   { id: 2, label: '本地指标', done: true },
-  { id: 3, label: 'CLI 通道', done: false },
+  { id: 3, label: 'CLI 通道', done: true },
   { id: 4, label: '诊断框架', done: false },
   { id: 5, label: '界面', done: false },
 ]
@@ -14,17 +15,31 @@ export default function App() {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function onRun() {
+  const onRun = useCallback(async () => {
     setRunning(true)
     setError(null)
     try {
-      setRows(await runSelfTest())
+      const result = await runSelfTest()
+      setRows(result)
+      // 转发到主进程 stdout，Electron 窗口里的结果在终端也看得到
+      console.log(
+        `[selftest] ${result.filter((r) => r.ok).length}/${result.length} 通过` +
+          result
+            .filter((r) => !r.ok)
+            .map((r) => `\n[selftest:FAIL] ${r.label} → ${r.value}`)
+            .join(''),
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setRunning(false)
     }
-  }
+  }, [])
+
+  // 桌面版开发期自动跑一次：Electron 窗口不方便手点，结果直接进终端日志
+  useEffect(() => {
+    if (import.meta.env.DEV && isDesktop()) void onRun()
+  }, [onRun])
 
   const passed = rows?.filter((r) => r.ok).length ?? 0
 

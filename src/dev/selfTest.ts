@@ -6,6 +6,7 @@
 
 import { ingest, sniffFormat, type IngestResult } from '../lib/image.ts'
 import { computeLocalMetrics, deriveExif } from '../lib/metrics/index.ts'
+import { detectChannels, isDesktop } from '../lib/transport.ts'
 
 export interface SelfTestRow {
   label: string
@@ -226,6 +227,36 @@ export async function runSelfTest(): Promise<SelfTestRow[]> {
     value: deriveExif(m.exif).summary,
     ok: deriveExif(m.exif).summary.includes('无拍摄参数'),
   })
+
+  // ---- Step 3：CLI 通道探测
+  rows.push({
+    label: '运行环境',
+    value: isDesktop() ? 'Electron 桌面版' : '浏览器（CLI 通道不可用）',
+    ok: true,
+    note: 'CLI 通道需要 spawn 子进程，只有桌面版有',
+  })
+
+  if (isDesktop()) {
+    const channels = await detectChannels()
+    for (const c of channels) {
+      rows.push({
+        label: `通道 ${c.label}`,
+        value: c.available ? `${c.exe}（${c.quotaSource}）` : (c.reason ?? '不可用'),
+        ok: c.available,
+      })
+    }
+    rows.push({
+      label: '至少有一条可用通道',
+      value: `${channels.filter((c) => c.available).length} / ${channels.length}`,
+      ok: channels.some((c) => c.available),
+    })
+  } else {
+    rows.push({
+      label: '通道探测（浏览器里应正确降级）',
+      value: `detectChannels() 返回 ${(await detectChannels()).length} 条`,
+      ok: (await detectChannels()).length === 0,
+    })
+  }
 
   return rows
 }

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "app:dev": "VITE_DEV_SERVER_URL=http://localhost:5178 electron .",
     "dist": "npm run build && mkdir -p '/Volumes/SN580 1TB Media/开发/CosFix/tmp' && TMPDIR='/Volumes/SN580 1TB Media/开发/CosFix/tmp' electron-builder --mac --win",
