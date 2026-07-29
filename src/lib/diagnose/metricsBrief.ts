@@ -89,7 +89,12 @@ export function buildMetricsBrief(m: LocalMetrics): string {
       `${SHARPNESS_LABELS[m.sharpness.verdict] ?? m.sharpness.verdict}` +
       (m.sharpness.measuredAtNativeScale
         ? '（在原始分辨率裁切上测的，可信）'
-        : '（只能在降采样图上测，结论偏乐观）'),
+        : '（只能在降采样图上测，结论偏乐观）') +
+      (m.sharpness.verdict === 'oversharpened'
+        ? '　※ 这条判定尚未标定，画面中若本来就有高对比硬边（深色皮衣、' +
+          '黑白交界、金属道具）会被误判成锐化过度。**请看图核对边缘有没有' +
+          '真正的白边振铃再决定要不要采信**'
+        : ''),
   )
 
   lines.push(`- 噪点：平坦区标准差估计 ${m.noise.estimate.toFixed(2)}（0-255 尺度）`)
